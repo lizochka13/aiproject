@@ -1,0 +1,26 @@
+# --- виртуальное окружение ---
+venv/
+.venv/
+env/
+
+# --- кэш Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- редакторы и IDE ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- система ---
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# --- модели MediaPipe (качаются отдельно, весят много) ---
+models/*.task
+
+# --- личное ---
+# Раскомментируй, если не хочешь выкладывать картинки в репозиторий:
+# memes/

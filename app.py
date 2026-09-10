@@ -6,13 +6,34 @@ from mediapipe.tasks import python
 import time
 from mediapipe.tasks.python import vision
 import random
+import tkinter as tk
 
+#функция ресайза мемов
+def without_distortions(img, side):
+    height, width = img.shape[:2]
+    coeff = min(side/width, side/height)
+    new_size = [int(height * coeff), int(width * coeff)]
+    resize = cv.resize(img, (new_size[1], new_size[0]))
+    canvas = np.zeros((side, side, 3), np.uint8)
+    padd_h = (side - new_size[0]) // 2
+    padd_w = (side - new_size[1]) // 2
+    canvas[padd_h : padd_h + new_size[0], padd_w : padd_w+ new_size[1]] = resize
+    return canvas
+
+#скока кадриков держать литсо
+NEED_FRAMES = 7 #было 5
+#размер окна с вояками
+MEME_MIN = 80
 #чиселки для подгона порога эмоций
-NEED_FRAMES = 5
 SMILE_MIN = 0.40
 JAW_MIN   = 0.45
-BROW_MIN  = 0.06
+BROW_DOWN_MIN  = 0.30
+BROW_INNER_MIN = 0.15
 FROWN_MIN = 0.10
+
+#бери лопату
+meme_x = 20
+meme_y = 20
 
 #списочек что бы был ну и типа норм категории блендшейпов видеть удобно
 face_list = ["mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight", "browDownLeft", "browDownRight", "browInnerUp", 
@@ -31,7 +52,7 @@ if not cap.isOpened():
     print("Cannot open camera")
     exit()
 
-#состояния ебальничка
+#состояния литса
 STATES = ["neutral", "happy", "shock", "angry", "sad"]
 
 #туть файлики картинок ищем и в словарик кидаем ключ это состояния типа названия папок тоже, а значение это список путей
@@ -50,9 +71,7 @@ recognize = vision.FaceLandmarker.create_from_options(recog_options)
 #это вообще кринж какой-то зачем там передавать аргументом время я так и не поняла 
 start_time = time.perf_counter()
 
-counter_frames = 0#лол эта строчка вообще нужна?
-
-#то чеховское ружье обязательно выстрелит
+#это чеховское ружье обязательно выстрелит
 fon = {}
 
 #немного переменных для прикола я не умею в оптимизацию кода ну типа ю ноу шершняга нужно от базы отталкиваться хоть какой-то на смене состояний и картинок
@@ -63,6 +82,14 @@ now_img = None
 candidate = "neutral"
 steady = 0 
 
+#основное окно и разворачиваем на весь экран
+cv.namedWindow('memeface', cv.WINDOW_NORMAL)
+cv.setWindowProperty('memeface', cv.WND_PROP_FULLSCREEN, cv.WINDOW_FULLSCREEN)
+#получаем размер окна
+root = tk.Tk()
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+root.destroy()
 while True: #че трешь дурак? дырка будет!
     # читаем кадрик
     ret, frame = cap.read()
@@ -80,11 +107,27 @@ while True: #че трешь дурак? дырка будет!
     time_mark = int((time.perf_counter() - start_time) * 1000)
     #посчитали ну теперь получаем результат рекогнайза
     result_recognize = recognize.detect_for_video(object_frame, time_mark)
-    
-    counter_frames += 1 #лол эта строчка вообще нужна? часть 2
 
     calc_state = "" #типа состояние которое нужно посчитать и потом сравнить с кандидатом
-    
+
+    #вот эта куча реально нужна что б мемы за бошкой летали тут все изи находим координаты лица и высчитываем положения мема
+    h, w = frame.shape[:2]
+    dot_list_x = []
+    dot_list_y = []
+    if result_recognize.face_landmarks:
+        for dots in result_recognize.face_landmarks[0]:
+            dot_list_x.append(dots.x)
+            dot_list_y.append(dots.y)
+        left_head, right_head, up_head, bottom_head = int(min(dot_list_x)*w), int(max(dot_list_x)*w), int(min(dot_list_y)*h), int(max(dot_list_y)*h)
+        head_width = right_head - left_head
+        meme_size = max(80, head_width)
+        meme_x = left_head - meme_size - 20
+        meme_y = up_head
+        meme_x = max(0, min(meme_x, w - meme_size))
+        meme_y = max(0, min(meme_y, h - meme_size))
+
+
+    #ту проверочка а вообще есть ли лицо
     if not result_recognize.face_blendshapes:
         calc_state = ""
     else:
@@ -95,10 +138,10 @@ while True: #че трешь дурак? дырка будет!
             calc_state = "happy"
         elif dict_face_blend["jawOpen"] > JAW_MIN: 
             calc_state = "shock"
-        elif (dict_face_blend["browDownLeft"] + dict_face_blend["browDownRight"])/ 2 > BROW_MIN:
+        elif (dict_face_blend["browDownLeft"] + dict_face_blend["browDownRight"])/ 2 > BROW_DOWN_MIN:
             calc_state = "angry"
-        elif (dict_face_blend["mouthFrownLeft"] + dict_face_blend["mouthFrownRight"])/ 2 > FROWN_MIN:
-            calc_state = "angry"
+        elif dict_face_blend["browInnerUp"] > BROW_INNER_MIN:
+            calc_state = "sad"
         else:
             calc_state = "neutral"
     if calc_state == "":
@@ -113,14 +156,23 @@ while True: #че трешь дурак? дырка будет!
     if steady >= NEED_FRAMES and candidate != now_state:
         now_state = candidate
         now_img = cv.imread(str(random.choice(statements_dict[now_state])))
-    #тут лицо кажем
-    cv.imshow('frame', frame)
+
+    #если картиночка имеется мы меняем ее размер впихиваем в основное окно и рамочку делаем
+    if now_img is not None:
+        resize_meme = without_distortions(now_img, meme_size)
+        frame[meme_y : meme_y + meme_size, meme_x : meme_x + meme_size] = resize_meme
+        cv.rectangle(frame, (meme_x-2, meme_y-2), (meme_x+meme_size+2, meme_y+meme_size+2), (0,0,0), 2)
+
+    #показываем все
+    cv.imshow('memeface', frame)
+
     key = cv.waitKey(1) & 0xFF
     #а тут снчалда считали нажатие а потом зависит от того что нажали делаем разное. типа полезно q - выйти, n - настроить на свое стандарт лицо
     if key == ord('p'):
         if not result_recognize.face_blendshapes:
             print("it's empty")
         else:
+            #CENA_KOROBKI
             for kluch, value in dict_face_blend.items():
                 if kluch in face_list:
                     print(kluch, value)
@@ -134,8 +186,5 @@ while True: #че трешь дурак? дырка будет!
     if key == ord('q'):
             break
             
-    #мемы, проходите в окошко номер 2
-    if now_img is not None:
-        cv.imshow('meme', now_img)
 cap.release()
 cv.destroyAllWindows()

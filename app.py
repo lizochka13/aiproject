@@ -6,17 +6,20 @@ from mediapipe.tasks import python
 import time
 from mediapipe.tasks.python import vision
 import random
-import tkinter as tk
+
 
 #функция ресайза мемов
-def without_distortions(img, side):
+def without_distortions(img, target_w, target_h):
     height, width = img.shape[:2]
-    coeff = min(side/width, side/height)
+    coeff = min(target_w/width, target_h/height)
     new_size = [int(height * coeff), int(width * coeff)]
-    resize = cv.resize(img, (new_size[1], new_size[0]))
-    canvas = np.zeros((side, side, 3), np.uint8)
-    padd_h = (side - new_size[0]) // 2
-    padd_w = (side - new_size[1]) // 2
+    if coeff < 1:
+        resize = cv.resize(img, (new_size[1], new_size[0]), interpolation=cv.INTER_AREA)
+    else:
+        resize = cv.resize(img, (new_size[1], new_size[0]), interpolation=cv.INTER_CUBIC)
+    canvas = np.zeros((target_h, target_w, 3), np.uint8)
+    padd_h = (target_h - new_size[0]) // 2
+    padd_w = (target_w - new_size[1]) // 2
     canvas[padd_h : padd_h + new_size[0], padd_w : padd_w+ new_size[1]] = resize
     return canvas
 
@@ -34,6 +37,7 @@ FROWN_MIN = 0.10
 #бери лопату
 meme_x = 20
 meme_y = 20
+meme_size = MEME_MIN
 
 #списочек что бы был ну и типа норм категории блендшейпов видеть удобно
 face_list = ["mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight", "browDownLeft", "browDownRight", "browInnerUp", 
@@ -82,14 +86,9 @@ now_img = None
 candidate = "neutral"
 steady = 0 
 
-#основное окно и разворачиваем на весь экран
+#основное окно и разворачиваем 
 cv.namedWindow('memeface', cv.WINDOW_NORMAL)
-cv.setWindowProperty('memeface', cv.WND_PROP_FULLSCREEN, cv.WINDOW_FULLSCREEN)
-#получаем размер окна
-root = tk.Tk()
-screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
-root.destroy()
+cv.resizeWindow('memeface', 900, 700)
 while True: #че трешь дурак? дырка будет!
     # читаем кадрик
     ret, frame = cap.read()
@@ -110,6 +109,9 @@ while True: #че трешь дурак? дырка будет!
 
     calc_state = "" #типа состояние которое нужно посчитать и потом сравнить с кандидатом
 
+
+    win_x, win_y, win_w, win_h = cv.getWindowImageRect('memeface')
+
     #вот эта куча реально нужна что б мемы за бошкой летали тут все изи находим координаты лица и высчитываем положения мема
     h, w = frame.shape[:2]
     dot_list_x = []
@@ -120,7 +122,7 @@ while True: #че трешь дурак? дырка будет!
             dot_list_y.append(dots.y)
         left_head, right_head, up_head, bottom_head = int(min(dot_list_x)*w), int(max(dot_list_x)*w), int(min(dot_list_y)*h), int(max(dot_list_y)*h)
         head_width = right_head - left_head
-        meme_size = max(80, head_width)
+        meme_size = max(MEME_MIN, min(head_width, 300))
         meme_x = left_head - meme_size - 20
         meme_y = up_head
         meme_x = max(0, min(meme_x, w - meme_size))
@@ -159,12 +161,16 @@ while True: #че трешь дурак? дырка будет!
 
     #если картиночка имеется мы меняем ее размер впихиваем в основное окно и рамочку делаем
     if now_img is not None:
-        resize_meme = without_distortions(now_img, meme_size)
+        resize_meme = without_distortions(now_img, meme_size, meme_size)
         frame[meme_y : meme_y + meme_size, meme_x : meme_x + meme_size] = resize_meme
         cv.rectangle(frame, (meme_x-2, meme_y-2), (meme_x+meme_size+2, meme_y+meme_size+2), (0,0,0), 2)
 
     #показываем все
-    cv.imshow('memeface', frame)
+    if win_w > 0 and win_h > 0:
+        canvas = without_distortions(frame, win_w, win_h)
+        cv.imshow('memeface', canvas)
+    else:
+        cv.imshow('memeface', frame)
 
     key = cv.waitKey(1) & 0xFF
     #а тут снчалда считали нажатие а потом зависит от того что нажали делаем разное. типа полезно q - выйти, n - настроить на свое стандарт лицо

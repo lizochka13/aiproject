@@ -28,11 +28,14 @@ NEED_FRAMES = 7 #было 5
 #размер окна с вояками
 MEME_MIN = 80
 #чиселки для подгона порога эмоций
-SMILE_MIN = 0.40
+SMILE_MIN = 0.25
+JAW_OPEN_MIN  = 0.35
 JAW_MIN   = 0.45
 BROW_DOWN_MIN  = 0.30
 BROW_INNER_MIN = 0.15
 FROWN_MIN = 0.10
+EYES_UP_MIN   = 0.12
+BROW_ASYM_MIN = 0.1
 
 #бери лопату
 meme_x = 20
@@ -41,7 +44,8 @@ meme_size = MEME_MIN
 
 #списочек что бы был ну и типа норм категории блендшейпов видеть удобно
 face_list = ["mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownRight", "browDownLeft", "browDownRight", "browInnerUp", 
-             "browOuterUpLeft", "browOuterUpRight", "jawOpen", "eyeSquintLeft", "eyeSquintRight"]
+             "browOuterUpLeft", "browOuterUpRight", "jawOpen", "eyeSquintLeft", "eyeSquintRight", "tongueOut", "eyeLookUpLeft", 
+             "eyeLookUpRight", "eyeBlinkLeft", "eyeBlinkRight"]
 
 #крч модельку тут ищем типа через файлы 
 BASE_DIR = Path(__file__).resolve().parent
@@ -57,7 +61,7 @@ if not cap.isOpened():
     exit()
 
 #состояния литса
-STATES = ["neutral", "happy", "shock", "angry", "sad"]
+STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused"]
 
 #туть файлики картинок ищем и в словарик кидаем ключ это состояния типа названия папок тоже, а значение это список путей
 dir_path = Path(__file__).resolve().parent / "memes" 
@@ -136,7 +140,13 @@ while True: #че трешь дурак? дырка будет!
         # суть то в чем, у вас выходит словарик где ключики это название категорий блендшейпов а значения это скор по каждому
         dict_face_blend = {x.category_name: (0 if x.score - fon.get(x.category_name, 0) < 0 else x.score - fon.get(x.category_name, 0)) for x in result_recognize.face_blendshapes[0]}
         # ну и типа дальше проверочки посчитать че за лицо
-        if (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN:
+        if (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
+            calc_state = "happy_open"
+        elif (dict_face_blend["eyeLookUpLeft"] + dict_face_blend["eyeLookUpRight"])/ 2 > EYES_UP_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
+            calc_state = "eyes_up_open"
+        elif abs(dict_face_blend["browOuterUpLeft"] - dict_face_blend["browOuterUpRight"]) > BROW_ASYM_MIN:
+            calc_state = "confused"
+        elif (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN:
             calc_state = "happy"
         elif dict_face_blend["jawOpen"] > JAW_MIN: 
             calc_state = "shock"

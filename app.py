@@ -61,7 +61,7 @@ if not cap.isOpened():
     exit()
 
 #состояния литса
-STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused"]
+STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused", "profile"]
 
 #туть файлики картинок ищем и в словарик кидаем ключ это состояния типа названия папок тоже, а значение это список путей
 dir_path = Path(__file__).resolve().parent / "memes" 
@@ -90,6 +90,8 @@ now_img = None
 candidate = "neutral"
 steady = 0 
 
+nose_ratio = 0.5
+
 #основное окно и разворачиваем 
 cv.namedWindow('memeface', cv.WINDOW_NORMAL)
 cv.resizeWindow('memeface', 900, 700)
@@ -116,6 +118,7 @@ while True: #че трешь дурак? дырка будет!
 
     win_x, win_y, win_w, win_h = cv.getWindowImageRect('memeface')
 
+
     #вот эта куча реально нужна что б мемы за бошкой летали тут все изи находим координаты лица и высчитываем положения мема
     h, w = frame.shape[:2]
     dot_list_x = []
@@ -126,11 +129,18 @@ while True: #че трешь дурак? дырка будет!
             dot_list_y.append(dots.y)
         left_head, right_head, up_head, bottom_head = int(min(dot_list_x)*w), int(max(dot_list_x)*w), int(min(dot_list_y)*h), int(max(dot_list_y)*h)
         head_width = right_head - left_head
+        #кончик носа
+        nose_center = result_recognize.face_landmarks[0][1].x * w
+        cv.circle(frame, (int(nose_center), int(result_recognize.face_landmarks[0][1].y * h)), 10, (0, 255, 0), -1)
+        if head_width != 0:
+            nose_ratio = (nose_center - left_head) / head_width
         meme_size = max(MEME_MIN, min(head_width, 300))
         meme_x = left_head - meme_size - 20
         meme_y = up_head
         meme_x = max(0, min(meme_x, w - meme_size))
         meme_y = max(0, min(meme_y, h - meme_size))
+
+    
 
 
     #ту проверочка а вообще есть ли лицо
@@ -188,6 +198,7 @@ while True: #че трешь дурак? дырка будет!
         if not result_recognize.face_blendshapes:
             print("it's empty")
         else:
+            print(nose_ratio)
             #CENA_KOROBKI
             for kluch, value in dict_face_blend.items():
                 if kluch in face_list:

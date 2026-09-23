@@ -36,6 +36,7 @@ BROW_INNER_MIN = 0.15
 FROWN_MIN = 0.10
 EYES_UP_MIN   = 0.12
 BROW_ASYM_MIN = 0.1
+PROFILE_MIN = 0.12
 
 #бери лопату
 meme_x = 20
@@ -50,7 +51,8 @@ face_list = ["mouthSmileLeft", "mouthSmileRight", "mouthFrownLeft", "mouthFrownR
 #крч модельку тут ищем типа через файлы 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR /"models" /"face_landmarker.task"
-if not MODEL_PATH.exists():
+MODEL_PATH2 = BASE_DIR /"models" /"gesture_recognizer.task"
+if not MODEL_PATH.exists() or not MODEL_PATH2.exists():
     print("модель не найдена")
     exit() 
 
@@ -61,7 +63,7 @@ if not cap.isOpened():
     exit()
 
 #состояния литса
-STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused", "profile"]
+STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused", "profile", "dont_know"]
 
 #туть файлики картинок ищем и в словарик кидаем ключ это состояния типа названия папок тоже, а значение это список путей
 dir_path = Path(__file__).resolve().parent / "memes" 
@@ -75,6 +77,9 @@ for state, files in statements_dict.items():
 base_options = python.BaseOptions(model_asset_path=str(MODEL_PATH))
 recog_options = vision.FaceLandmarkerOptions(base_options=base_options, running_mode=vision.RunningMode.VIDEO, num_faces = 1, output_face_blendshapes = True)
 recognize = vision.FaceLandmarker.create_from_options(recog_options)
+base_options2 = python.BaseOptions(model_asset_path=str(MODEL_PATH2))
+recog_options2 = vision.GestureRecognizerOptions(base_options=base_options2, running_mode=vision.RunningMode.VIDEO, num_hands=2)
+recognize2 = vision.GestureRecognizer.create_from_options(recog_options2)
 
 #это вообще кринж какой-то зачем там передавать аргументом время я так и не поняла 
 start_time = time.perf_counter()
@@ -103,7 +108,7 @@ while True: #че трешь дурак? дырка будет!
         break
     #крч у меня камера вебки кринж и я повернула ее и отзеркалила типа можно так то этого не делать если норм будет видно
     frame = cv.flip(frame, 1)
-    frame = cv.rotate(frame, cv.ROTATE_90_CLOCKWISE)
+    #frame = cv.rotate(frame, cv.ROTATE_90_CLOCKWISE)
     #вот проблемы с непонимаем ргб бгр кгб решаются ниже
     frame_for_recognize = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
     #теперь есть реально объект а не картинка это вобсето важно
@@ -112,6 +117,7 @@ while True: #че трешь дурак? дырка будет!
     time_mark = int((time.perf_counter() - start_time) * 1000)
     #посчитали ну теперь получаем результат рекогнайза
     result_recognize = recognize.detect_for_video(object_frame, time_mark)
+    result_recognize2 = recognize2.recognize_for_video(object_frame, time_mark)
 
     calc_state = "" #типа состояние которое нужно посчитать и потом сравнить с кандидатом
 
@@ -131,7 +137,7 @@ while True: #че трешь дурак? дырка будет!
         head_width = right_head - left_head
         #кончик носа
         nose_center = result_recognize.face_landmarks[0][1].x * w
-        cv.circle(frame, (int(nose_center), int(result_recognize.face_landmarks[0][1].y * h)), 10, (0, 255, 0), -1)
+        #cv.circle(frame, (int(nose_center), int(result_recognize.face_landmarks[0][1].y * h)), 10, (0, 255, 0), -1)
         if head_width != 0:
             nose_ratio = (nose_center - left_head) / head_width
         meme_size = max(MEME_MIN, min(head_width, 300))
@@ -141,31 +147,35 @@ while True: #че трешь дурак? дырка будет!
         meme_y = max(0, min(meme_y, h - meme_size))
 
     
-
-
-    #ту проверочка а вообще есть ли лицо
-    if not result_recognize.face_blendshapes:
-        calc_state = ""
-    else:
+    #тут делаем жесты с руками пока проверочка на наличие ручек и один жестик его нужно доработать
+    if result_recognize2.hand_landmarks:
+        if len(result_recognize2.hand_landmarks) == 2 and result_recognize2.gestures[0][0].category_name == "Open_Palm" and result_recognize2.gestures[1][0].category_name == "Open_Palm":
+            calc_state = "dont_know"
+    #тут проверочка а вообще есть ли лицо и не пустое ли состояние
+    if result_recognize.face_blendshapes and calc_state == "":
         # суть то в чем, у вас выходит словарик где ключики это название категорий блендшейпов а значения это скор по каждому
         dict_face_blend = {x.category_name: (0 if x.score - fon.get(x.category_name, 0) < 0 else x.score - fon.get(x.category_name, 0)) for x in result_recognize.face_blendshapes[0]}
         # ну и типа дальше проверочки посчитать че за лицо
-        if (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
-            calc_state = "happy_open"
-        elif (dict_face_blend["eyeLookUpLeft"] + dict_face_blend["eyeLookUpRight"])/ 2 > EYES_UP_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
-            calc_state = "eyes_up_open"
-        elif abs(dict_face_blend["browOuterUpLeft"] - dict_face_blend["browOuterUpRight"]) > BROW_ASYM_MIN:
-            calc_state = "confused"
-        elif (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN:
-            calc_state = "happy"
-        elif dict_face_blend["jawOpen"] > JAW_MIN: 
-            calc_state = "shock"
-        elif (dict_face_blend["browDownLeft"] + dict_face_blend["browDownRight"])/ 2 > BROW_DOWN_MIN:
-            calc_state = "angry"
-        elif dict_face_blend["browInnerUp"] > BROW_INNER_MIN:
-            calc_state = "sad"
+        if nose_ratio < PROFILE_MIN or nose_ratio > 1 - PROFILE_MIN:
+            calc_state = "profile"
         else:
-            calc_state = "neutral"
+            if (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
+                calc_state = "happy_open"
+            elif (dict_face_blend["eyeLookUpLeft"] + dict_face_blend["eyeLookUpRight"])/ 2 > EYES_UP_MIN and dict_face_blend["jawOpen"] > JAW_OPEN_MIN:
+                calc_state = "eyes_up_open"
+            elif dict_face_blend["jawOpen"] > JAW_MIN: 
+                calc_state = "shock"
+            elif abs(dict_face_blend["browOuterUpLeft"] - dict_face_blend["browOuterUpRight"]) > BROW_ASYM_MIN:
+                calc_state = "confused"
+            elif (dict_face_blend["mouthSmileLeft"] + dict_face_blend["mouthSmileRight"])/ 2 > SMILE_MIN:
+                calc_state = "happy"
+            elif (dict_face_blend["browDownLeft"] + dict_face_blend["browDownRight"])/ 2 > BROW_DOWN_MIN:
+                calc_state = "angry"
+            elif dict_face_blend["browInnerUp"] > BROW_INNER_MIN:
+                calc_state = "sad"
+            else:
+                calc_state = "neutral"
+
     if calc_state == "":
         pass
     # тут тоже все понятненько типа получается предполагаемое лицо? да +1 к готовности. нет готовность = 1
@@ -203,6 +213,15 @@ while True: #че трешь дурак? дырка будет!
             for kluch, value in dict_face_blend.items():
                 if kluch in face_list:
                     print(kluch, value)
+    if key == ord('f'):
+        if not result_recognize2.gestures:
+            print("it's empty")
+        else:
+            for i in range(len(result_recognize2.gestures)):
+                hand = result_recognize2.handedness[i][0].category_name
+                gesture = result_recognize2.gestures[i][0].category_name
+                accuracity = result_recognize2.gestures[i][0].score
+                print(hand, gesture, accuracity)
     if key == ord('n'):
             if not result_recognize.face_blendshapes:
                 print("it's empty")

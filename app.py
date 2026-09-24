@@ -6,8 +6,22 @@ from mediapipe.tasks import python
 import time
 from mediapipe.tasks.python import vision
 import random
+import math
 
-
+#функция которая возвращает сколько пальцев разогнуто
+def fingers(dots):
+    wrist = dots[0]
+    finger_end = [8, 12, 16, 20]
+    joints = [6, 10, 14, 18]
+    count = 0
+    for i in range(4):
+        finger = dots[finger_end[i]]
+        joint = dots[joints[i]]
+        len_end = math.hypot(finger.x - wrist.x, finger.y - wrist.y)
+        len_joint = math.hypot(joint.x - wrist.x, joint.y - wrist.y)
+        if len_end > len_joint:
+            count += 1
+    return count
 #функция ресайза мемов
 def without_distortions(img, target_w, target_h):
     height, width = img.shape[:2]
@@ -63,7 +77,7 @@ if not cap.isOpened():
     exit()
 
 #состояния литса
-STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused", "profile", "dont_know"]
+STATES = ["neutral", "happy", "shock", "angry", "sad", "happy_open", "eyes_up_open", "confused", "profile", "dont_know", "gesture_fist", "point_one", "point_two"]
 
 #туть файлики картинок ищем и в словарик кидаем ключ это состояния типа названия папок тоже, а значение это список путей
 dir_path = Path(__file__).resolve().parent / "memes" 
@@ -149,8 +163,16 @@ while True: #че трешь дурак? дырка будет!
     
     #тут делаем жесты с руками пока проверочка на наличие ручек и один жестик его нужно доработать
     if result_recognize2.hand_landmarks:
-        if len(result_recognize2.hand_landmarks) == 2 and result_recognize2.gestures[0][0].category_name == "Open_Palm" and result_recognize2.gestures[1][0].category_name == "Open_Palm":
-            calc_state = "dont_know"
+        if len(result_recognize2.hand_landmarks) == 2:
+            if fingers(result_recognize2.hand_landmarks[0]) == 4 and fingers(result_recognize2.hand_landmarks[1]) == 4:
+                calc_state = "dont_know"
+            if fingers(result_recognize2.hand_landmarks[0]) == 1 and fingers(result_recognize2.hand_landmarks[1]) == 1:
+                calc_state = "point_two"
+        if len(result_recognize2.hand_landmarks) == 1:
+            if fingers(result_recognize2.hand_landmarks[0]) == 0:
+                calc_state = "gesture_fist"
+            if fingers(result_recognize2.hand_landmarks[0]) == 1:
+                calc_state = "point_one"
     #тут проверочка а вообще есть ли лицо и не пустое ли состояние
     if result_recognize.face_blendshapes and calc_state == "":
         # суть то в чем, у вас выходит словарик где ключики это название категорий блендшейпов а значения это скор по каждому
@@ -221,7 +243,7 @@ while True: #че трешь дурак? дырка будет!
                 hand = result_recognize2.handedness[i][0].category_name
                 gesture = result_recognize2.gestures[i][0].category_name
                 accuracity = result_recognize2.gestures[i][0].score
-                print(hand, gesture, accuracity)
+                print(hand, gesture, accuracity, fingers(result_recognize2.hand_landmarks[i]))
     if key == ord('n'):
             if not result_recognize.face_blendshapes:
                 print("it's empty")
